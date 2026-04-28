@@ -21,6 +21,8 @@ UPLOAD_DIR = "uploads"
 TEMP_DIR = "temp_uploads"
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+if os.path.exists(TEMP_DIR):
+    shutil.rmtree(TEMP_DIR)
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 class ConnectionManager:
@@ -114,13 +116,18 @@ async def upload_chunk(
     filename: str = Form(...),
     target_id: str = Form(...)
 ):
+    batch_id = os.path.basename(batch_id)
+    file_id = os.path.basename(file_id)
+    filename = os.path.basename(filename)
+    
     temp_dir_path = os.path.join(TEMP_DIR, batch_id, file_id)
     os.makedirs(temp_dir_path, exist_ok=True)
     
     chunk_path = os.path.join(temp_dir_path, f"{chunk_index}")
     
     with open(chunk_path, "wb") as buffer:
-        buffer.write(await file.read())
+        file.file.seek(0)
+        shutil.copyfileobj(file.file, buffer)
         
     received_chunks = len(os.listdir(temp_dir_path))
     progress = int((received_chunks / total_chunks) * 100)
@@ -159,6 +166,9 @@ import zipfile
 
 @app.post("/upload/finalize")
 async def finalize_batch(batch_id: str = Form(...), target_id: str = Form(...), sender_name: str = Form(...)):
+    batch_id = os.path.basename(batch_id)
+    sender_name = os.path.basename(sender_name)
+    
     assembled_dir = os.path.join(TEMP_DIR, batch_id, "assembled")
     
     if not os.path.exists(assembled_dir):
@@ -166,15 +176,17 @@ async def finalize_batch(batch_id: str = Form(...), target_id: str = Form(...), 
         
     files = os.listdir(assembled_dir)
     if len(files) == 0:
+        shutil.rmtree(os.path.join(TEMP_DIR, batch_id), ignore_errors=True)
         return {"error": "No files in batch"}
         
     if len(files) == 1:
         # Single file
         filename = files[0]
-        final_path = os.path.join(UPLOAD_DIR, filename)
+        final_filename = f"{batch_id}_{filename}"
+        final_path = os.path.join(UPLOAD_DIR, final_filename)
         shutil.move(os.path.join(assembled_dir, filename), final_path)
         download_name = filename
-        download_url = f"/download/{filename}"
+        download_url = f"/download/{final_filename}"
     else:
         # Multiple files, zip them
         zip_filename = f"{sender_name}_batch_{batch_id}.zip"
@@ -187,7 +199,7 @@ async def finalize_batch(batch_id: str = Form(...), target_id: str = Form(...), 
         download_url = f"/download/{zip_filename}"
         
     # Clean up batch dir
-    shutil.rmtree(os.path.join(TEMP_DIR, batch_id))
+    shutil.rmtree(os.path.join(TEMP_DIR, batch_id), ignore_errors=True)
     
     # Notify Target to download
     await manager.send_personal_message({
@@ -201,6 +213,7 @@ async def finalize_batch(batch_id: str = Form(...), target_id: str = Form(...), 
 
 @app.get("/download/{filename}")
 def download_file(filename: str, background_tasks: BackgroundTasks):
+    filename = os.path.basename(filename)
     file_path = os.path.join(UPLOAD_DIR, filename)
     if os.path.exists(file_path):
         background_tasks.add_task(os.remove, file_path)

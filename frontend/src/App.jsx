@@ -4,7 +4,7 @@ import { UploadCloud, CheckCircle2, Shield, Share2, ServerCog, Wifi, Smartphone,
 
 const DEFAULT_HOST = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname
 const PORT = 8000
-const CHUNK_SIZE = 1024 * 1024 // 1MB
+const CHUNK_SIZE = 10 * 1024 * 1024 // 10MB
 
 const getClientId = () => {
   let id = localStorage.getItem("lsx_id")
@@ -233,7 +233,7 @@ function App() {
         }).catch(err => console.error("Chunk upload failed", err))
 
         uploadPromises.push(request)
-        if (uploadPromises.length >= 5) {
+        if (uploadPromises.length >= 2) {
           await Promise.all(uploadPromises)
           uploadPromises.length = 0
         }
