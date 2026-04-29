@@ -211,11 +211,19 @@ async def finalize_batch(batch_id: str = Form(...), target_id: str = Form(...), 
     
     return {"status": "completed", "download_url": download_url}
 
+async def delete_file_delayed(file_path: str, delay: int = 1800):
+    await asyncio.sleep(delay)
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception:
+        pass
+
 @app.get("/download/{filename}")
 def download_file(filename: str, background_tasks: BackgroundTasks):
     filename = os.path.basename(filename)
     file_path = os.path.join(UPLOAD_DIR, filename)
     if os.path.exists(file_path):
-        background_tasks.add_task(os.remove, file_path)
+        background_tasks.add_task(delete_file_delayed, file_path)
         return FileResponse(file_path, filename=filename)
     raise HTTPException(status_code=404, detail="File not found")

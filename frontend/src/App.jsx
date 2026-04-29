@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import axios from 'axios'
-import { UploadCloud, CheckCircle2, Shield, Share2, ServerCog, Wifi, Smartphone, Monitor, ShieldAlert, ZapIcon, Edit2, X, Plus } from 'lucide-react'
+import { UploadCloud, CheckCircle2, Shield, Share2, ServerCog, Wifi, Smartphone, Monitor, ShieldAlert, ZapIcon, Edit2, X, Plus, Info, AlertTriangle } from 'lucide-react'
 
 const DEFAULT_HOST = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname
 const PORT = 8000
@@ -43,6 +43,19 @@ function App() {
   const [connectedDevices, setConnectedDevices] = useState([])
   const [selectedTargets, setSelectedTargets] = useState([])
 
+  // UI Enhancements
+  const [toasts, setToasts] = useState([])
+  const [isDragActive, setIsDragActive] = useState(false)
+  const dragCounter = useRef(0)
+
+  const showToast = useCallback((message, type = 'error') => {
+    const id = Date.now() + Math.random()
+    setToasts(prev => [...prev, { id, message, type }])
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id))
+    }, 4000)
+  }, [])
+
   const toggleTarget = (id) => {
     setSelectedTargets(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
@@ -61,6 +74,47 @@ function App() {
     localStorage.setItem("lsx_name", deviceName)
   }, [deviceName])
 
+  // Global Drag & Drop Handler
+  useEffect(() => {
+    const handleDragEnter = (e) => {
+      e.preventDefault()
+      dragCounter.current += 1
+      if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+        setIsDragActive(true)
+      }
+    }
+    const handleDragLeave = (e) => {
+      e.preventDefault()
+      dragCounter.current -= 1
+      if (dragCounter.current === 0) {
+        setIsDragActive(false)
+      }
+    }
+    const handleDragOver = (e) => e.preventDefault()
+    const handleDrop = (e) => {
+      e.preventDefault()
+      dragCounter.current = 0
+      setIsDragActive(false)
+      if (e.dataTransfer.files?.length > 0) {
+        appendFiles(e.dataTransfer.files)
+        showToast("Files added to queue successfully!", "success")
+      }
+    }
+
+    const doc = document.documentElement
+    doc.addEventListener('dragenter', handleDragEnter)
+    doc.addEventListener('dragleave', handleDragLeave)
+    doc.addEventListener('dragover', handleDragOver)
+    doc.addEventListener('drop', handleDrop)
+
+    return () => {
+      doc.removeEventListener('dragenter', handleDragEnter)
+      doc.removeEventListener('dragleave', handleDragLeave)
+      doc.removeEventListener('dragover', handleDragOver)
+      doc.removeEventListener('drop', handleDrop)
+    }
+  }, [])
+
   useEffect(() => {
     let reconnectTimeout;
     let newWs;
@@ -77,6 +131,7 @@ function App() {
             setConnectedDevices(data.devices)
             break;
           case 'incoming_batch':
+            showToast(`${data.sender_name} wants to send you files!`, "success")
             setIncomingBatches(prev => [...prev, data])
             break;
           case 'batch_response_result':
@@ -84,7 +139,7 @@ function App() {
               const batch = activeBatchesRef.current[data.batch_id]
               if (batch) startUploadingBatch(data.batch_id, batch.files, batch.target_id)
             } else {
-              alert("Target device rejected the transfer.")
+              showToast("Target device rejected the transfer.", "error")
               setActiveBatches(prev => {
                 const next = { ...prev }
                 delete next[data.batch_id]
@@ -93,7 +148,7 @@ function App() {
             }
             break;
           case 'batch_error':
-            alert(data.error || "Failed to contact target device.")
+            showToast(data.error || "Failed to contact target device.", "error")
             setActiveBatches(prev => {
               const next = { ...prev }
               delete next[data.batch_id]
@@ -137,11 +192,6 @@ function App() {
     }
   }, [serverIp, deviceName, clientId])
 
-  const handleDrop = (e) => {
-    e.preventDefault()
-    if (e.dataTransfer.files?.length > 0) appendFiles(e.dataTransfer.files)
-  }
-
   const handleFileSelect = (e) => {
     if (e.target.files?.length > 0) appendFiles(e.target.files)
   }
@@ -152,7 +202,6 @@ function App() {
       return f
     })
     setFiles(prev => [...prev, ...fileArray])
-    // Reset file input so same file can be selected again
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
@@ -161,8 +210,8 @@ function App() {
   }
 
   const requestBatchTransfer = () => {
-    if (selectedTargets.length === 0) return alert("Please select at least one target device first!")
-    if (files.length === 0) return alert("Please add files first!")
+    if (selectedTargets.length === 0) return showToast("Please select at least one target device first!", "error")
+    if (files.length === 0) return showToast("Please add files first!", "error")
 
     selectedTargets.forEach(targetId => {
       const batchId = `batch-${targetId}-${Date.now()}`
@@ -189,6 +238,7 @@ function App() {
 
     setFiles([])
     setSelectedTargets([])
+    showToast("Transfer requested successfully", "success")
   }
 
   const startUploadingBatch = async (batchId, batchFiles, targetId) => {
@@ -230,7 +280,10 @@ function App() {
             ...prev,
             [batchId]: { ...prev[batchId], progress: overallProgress }
           }))
-        }).catch(err => console.error("Chunk upload failed", err))
+        }).catch(err => {
+          console.error("Chunk upload failed", err)
+          showToast("Error uploading file chunk over network.", "error")
+        })
 
         uploadPromises.push(request)
         if (uploadPromises.length >= 2) {
@@ -254,7 +307,10 @@ function App() {
           ...prev,
           [batchId]: { ...prev[batchId], status: 'completed', progress: 100 }
         }))
-      }).catch(err => console.error("Finalize failed", err))
+      }).catch(err => {
+        console.error("Finalize failed", err)
+        showToast("Server encountered an error while finalizing files.", "error")
+      })
   }
 
   const handleIncomingResponse = (req, accepted) => {
@@ -277,27 +333,52 @@ function App() {
     const a = document.createElement('a')
     a.href = fullUrl
     a.download = name
-    a.target = '_blank'
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
+    showToast(`Downloading ${name} safely...`, "success")
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-500/30">
-      <header className="border-b border-white/10 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-blue-500/20 p-2 rounded-xl text-blue-400">
-              <Share2 size={24} />
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-500/30 overflow-x-hidden relative">
+
+      {/* Toast Notifications */}
+      <div className="fixed top-20 right-4 z-[100] flex flex-col gap-3 pointer-events-none">
+        {toasts.map(t => (
+          <div key={t.id} className={`pointer-events-auto px-5 py-3 rounded-2xl shadow-2xl border backdrop-blur-xl flex items-center gap-3 transform transition-all duration-300 animate-in fade-in slide-in-from-right-8 ${t.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-100' : 'bg-green-500/10 border-green-500/20 text-green-100'}`}>
+            {t.type === 'error' ? <AlertTriangle size={18} className="text-red-400" /> : <CheckCircle2 size={18} className="text-green-400" />}
+            <p className="text-sm font-medium">{t.message}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Global Drag Overlay */}
+      {isDragActive && (
+        <div className="fixed inset-0 z-[200] bg-blue-900/40 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-200">
+          <div className="bg-slate-900/80 p-12 rounded-[3rem] border-4 border-dashed border-blue-400/50 flex flex-col items-center shadow-2xl transform scale-110">
+            <div className="p-6 bg-blue-500/20 rounded-full mb-6">
+              <UploadCloud size={64} className="text-blue-400 animate-bounce" />
             </div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent hidden sm:block">
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-blue-200 to-white bg-clip-text text-transparent">Drop Files Here</h2>
+            <p className="text-blue-300/70 mt-4 text-lg font-medium">Any format, original quality</p>
+          </div>
+        </div>
+      )}
+
+      {/* Glassy Header */}
+      <header className="border-b border-white/5 bg-slate-950/60 backdrop-blur-xl sticky top-0 z-50 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 p-2.5 rounded-2xl border border-white/5 shadow-inner">
+              <Share2 size={24} className="text-blue-400" />
+            </div>
+            <h1 className="text-2xl font-extrabold bg-gradient-to-br from-white via-slate-200 to-slate-400 bg-clip-text text-transparent hidden sm:block tracking-tight">
               LocalShare X
             </h1>
           </div>
 
-          <div className="flex items-center gap-4 bg-slate-900 px-4 py-2 rounded-full border border-white/10">
-            <div className={`w-2 h-2 rounded-full animate-pulse shrink-0 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+          <div className="flex items-center gap-4 bg-slate-900/80 px-5 py-2.5 rounded-full border border-white/10 shadow-lg backdrop-blur-md">
+            <div className={`w-2.5 h-2.5 rounded-full animate-pulse shrink-0 shadow-[0_0_10px_currentColor] ${isConnected ? 'bg-green-500 text-green-500' : 'bg-red-500 text-red-500'}`} />
             <div className="flex flex-col items-start pr-2">
               {isEditingName ? (
                 <input
@@ -307,70 +388,78 @@ function App() {
                   onChange={e => setDeviceName(e.target.value)}
                   onBlur={() => setIsEditingName(false)}
                   onKeyDown={e => { if (e.key === 'Enter') setIsEditingName(false) }}
-                  className="bg-black/20 border border-white/10 outline-none text-xs text-white px-1 py-0.5 rounded w-24"
+                  className="bg-black/30 border border-blue-500/50 outline-none text-xs text-white px-2 py-1 rounded-md w-28 focus:ring-2 ring-blue-500/30 transition-all font-medium"
                 />
               ) : (
                 <span
-                  className="text-xs font-semibold text-slate-200 cursor-pointer hover:text-white flex items-center gap-1 truncate max-w-[100px] sm:max-w-none"
+                  className="text-sm font-semibold text-slate-200 cursor-pointer hover:text-white flex items-center gap-1.5 truncate max-w-[120px] sm:max-w-none transition-colors"
                   onClick={() => setIsEditingName(true)}
                   title="Click to change your device name"
                 >
-                  {deviceName} <Edit2 size={10} className="shrink-0" />
+                  {deviceName} <Edit2 size={12} className="shrink-0 text-slate-500" />
                 </span>
               )}
-              {isConnected ? <span className="text-[10px] text-green-400">Online</span> : <span className="text-[10px] text-red-400">Connecting...</span>}
             </div>
-            <div className="w-px h-6 bg-white/10 mx-2 hidden sm:block" />
-            <div className="flex items-center gap-2 hidden sm:flex">
-              <ServerCog size={16} className="text-slate-400" />
+            <div className="w-px h-6 bg-gradient-to-b from-transparent via-white/10 to-transparent mx-1 hidden sm:block" />
+            <div className="flex items-center gap-2 hidden sm:flex bg-slate-950/50 px-3 py-1.5 rounded-lg border border-white/5">
+              <ServerCog size={14} className="text-slate-400" />
               <input
                 type="text"
                 value={serverIp}
                 onChange={e => setServerIp(e.target.value)}
-                className="bg-transparent border-none outline-none text-sm w-32 text-slate-300 focus:text-white"
-                placeholder="Server IP"
+                className="bg-transparent border-none outline-none text-xs w-28 text-slate-300 focus:text-white font-mono"
+                title="Server IP Address"
               />
             </div>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 grid lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-8 flex flex-col gap-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 grid lg:grid-cols-12 gap-8 relative z-10">
 
-          {/* Incoming Requests */}
+        {/* Left Column */}
+        <div className="lg:col-span-8 flex flex-col gap-8">
+
+          {/* Incoming Requests Notification */}
           {incomingBatches.map((req, idx) => (
-            <div key={idx} className="bg-indigo-900/40 border border-indigo-500/50 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4">
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <div className="bg-indigo-500/20 p-3 rounded-full text-indigo-300 shrink-0">
-                  <Smartphone size={24} />
+            <div key={idx} className="bg-gradient-to-r from-indigo-900/50 to-slate-900/50 border border-indigo-500/30 rounded-[2rem] p-5 flex flex-col sm:flex-row items-center justify-between gap-5 shadow-2xl animate-in fade-in zoom-in-95 duration-300">
+              <div className="flex items-center gap-4 w-full sm:w-auto">
+                <div className="bg-indigo-500/20 p-4 rounded-2xl text-indigo-300 shrink-0 relative overflow-hidden">
+                  <div className="absolute inset-0 bg-indigo-400/20 animate-pulse" />
+                  <Smartphone size={28} className="relative z-10" />
                 </div>
                 <div className="overflow-hidden">
-                  <p className="font-semibold text-slate-200 truncate">
-                    {req.sender_name} sent you {req.files.length} file{req.files.length > 1 ? 's' : ''}
+                  <p className="text-lg font-bold text-white truncate">
+                    {req.sender_name} wands to send files
                   </p>
-                  <p className="text-sm text-indigo-200/70 truncate">
-                    {req.files.length === 1 ? req.files[0].name : 'Group of files'} <span className="mx-2">•</span>
-                    {(req.files.reduce((acc, f) => acc + f.size, 0) / 1024 / 1024).toFixed(2)} MB
+                  <p className="text-sm text-indigo-200/70 truncate flex items-center gap-2 mt-0.5">
+                    <span className="bg-indigo-500/20 px-2 py-0.5 rounded text-xs font-semibold">{req.files.length} Item{req.files.length > 1 ? 's' : ''}</span>
+                    <span>{(req.files.reduce((acc, f) => acc + f.size, 0) / 1024 / 1024).toFixed(2)} MB</span>
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-                <button onClick={() => handleIncomingResponse(req, false)} className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">Reject</button>
-                <button onClick={() => handleIncomingResponse(req, true)} className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg transition-colors font-medium flex items-center justify-center gap-2"><ZapIcon size={16} /> Accept</button>
+              <div className="flex items-center gap-3 w-full sm:w-auto mt-2 sm:mt-0">
+                <button onClick={() => handleIncomingResponse(req, false)} className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-slate-800/80 hover:bg-red-500/20 hover:text-red-400 text-slate-300 border border-transparent hover:border-red-500/30 transition-all font-medium">Reject</button>
+                <button onClick={() => handleIncomingResponse(req, true)} className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] transition-all font-bold flex items-center justify-center gap-2 transform hover:scale-105 active:scale-95"><ZapIcon size={18} fill="currentColor" /> Accept</button>
               </div>
             </div>
           ))}
 
-          {/* Network Selection */}
-          <div className="bg-slate-900/50 rounded-3xl border border-white/10 p-6 backdrop-blur-sm">
-            <h3 className="text-lg font-semibold mb-4 text-slate-200 flex items-center gap-2">
-              <Wifi size={20} className="text-blue-400" />
+          {/* Step 1: Network Selection */}
+          <div className="bg-slate-900/40 rounded-[2rem] border border-white/5 p-6 md:p-8 backdrop-blur-2xl shadow-xl relative overflow-hidden group">
+            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <h3 className="text-xl font-bold mb-6 text-slate-200 flex items-center gap-3">
+              <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400"><Wifi size={20} /></div>
               1. Select Target Device
             </h3>
             {connectedDevices.length === 0 ? (
-              <div className="text-center py-8 text-slate-500 bg-slate-950/50 rounded-2xl border border-dashed border-slate-800">
-                Waiting for others to join {serverIp}...
+              <div className="flex flex-col items-center justify-center py-12 px-4 bg-slate-950/30 rounded-[1.5rem] border border-dashed border-slate-800">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-full border-4 border-slate-800 border-t-blue-500 animate-spin" />
+                  <div className="absolute inset-0 flex items-center justify-center"><Wifi size={20} className="text-slate-500" /></div>
+                </div>
+                <p className="mt-4 text-slate-400 font-medium text-center">Scanning local network for devices...</p>
+                <p className="text-xs text-slate-600 mt-2 text-center max-w-xs">Make sure the other device has LocalShare X open to appear here.</p>
               </div>
             ) : (
               <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar snap-x">
@@ -378,14 +467,17 @@ function App() {
                   <button
                     key={dev.id}
                     onClick={() => toggleTarget(dev.id)}
-                    className={`snap-center shrink-0 w-36 h-36 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 transition-all ${selectedTargets.includes(dev.id) ? 'border-blue-500 bg-blue-500/10' : 'border-slate-800 bg-slate-800/30 hover:border-slate-600'}`}
+                    className={`snap-center shrink-0 w-40 h-44 flex flex-col items-center justify-center gap-4 rounded-[1.5rem] border-2 transition-all transform active:scale-95 ${selectedTargets.includes(dev.id) ? 'border-blue-500 bg-gradient-to-b from-blue-500/10 to-transparent shadow-[0_0_20px_rgba(59,130,246,0.15)] ring-4 ring-blue-500/10' : 'border-slate-800 bg-slate-900/50 hover:border-slate-600 hover:bg-slate-800'}`}
                   >
-                    <div className={selectedTargets.includes(dev.id) ? 'text-blue-400' : 'text-slate-400'}>
-                      {dev.name.includes("Phone") || dev.name.includes("iOS") ? <Smartphone size={40} /> : <Monitor size={40} />}
+                    <div className={`p-4 rounded-full transition-colors ${selectedTargets.includes(dev.id) ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800 text-slate-400'}`}>
+                      {dev.name.includes("Phone") || dev.name.includes("iOS") ? <Smartphone size={32} /> : <Monitor size={32} />}
                     </div>
-                    <div className="text-center w-full px-2">
-                      <p className={`font-medium text-sm truncate ${selectedTargets.includes(dev.id) ? 'text-blue-200' : 'text-slate-300'}`}>{dev.name}</p>
-                      <p className="text-[10px] text-slate-500 uppercase mt-1 px-2 py-0.5 bg-black/20 rounded-full inline-block">Online</p>
+                    <div className="text-center w-full px-3">
+                      <p className={`font-bold text-sm truncate ${selectedTargets.includes(dev.id) ? 'text-blue-100' : 'text-slate-300'}`}>{dev.name}</p>
+                      <div className="flex items-center justify-center gap-1.5 mt-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                        <p className="text-[10px] text-slate-500 font-medium">Ready</p>
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -393,39 +485,43 @@ function App() {
             )}
           </div>
 
-          {/* File Selection & Staging */}
-          <div className="bg-slate-900/50 rounded-3xl border border-white/10 p-6 backdrop-blur-sm">
-            <h3 className="text-lg font-semibold mb-4 text-slate-200 flex items-center gap-2">
-              <UploadCloud size={20} className="text-blue-400" />
+          {/* Step 2: File Selection & Staging */}
+          <div className="bg-slate-900/40 rounded-[2rem] border border-white/5 p-6 md:p-8 backdrop-blur-2xl shadow-xl relative overflow-hidden group">
+            <h3 className="text-xl font-bold mb-6 text-slate-200 flex items-center gap-3">
+              <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400"><UploadCloud size={20} /></div>
               2. Add Files to Send
             </h3>
 
             <div
-              onDragOver={e => e.preventDefault()}
-              onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className="group relative h-32 rounded-2xl border-2 border-dashed border-slate-700/50 bg-slate-900/50 hover:bg-slate-800/50 hover:border-blue-500/50 transition-all duration-300 flex flex-col items-center justify-center cursor-pointer overflow-hidden mb-4"
+              className="group/upload relative h-36 rounded-[1.5rem] border-2 border-dashed border-slate-700/50 bg-slate-900/40 hover:bg-slate-800/80 hover:border-purple-500/50 transition-all duration-300 flex flex-col items-center justify-center cursor-pointer overflow-hidden mb-6"
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="flex items-center gap-3 text-slate-400 group-hover:text-blue-400 transition-colors">
-                <Plus size={24} />
-                <span className="font-medium">Tap or drop files here (Full Quality)</span>
+              <div className="absolute inset-0 bg-gradient-to-b from-purple-500/5 to-transparent opacity-0 group-hover/upload:opacity-100 transition-opacity duration-500" />
+              <div className="bg-slate-950 p-4 rounded-full mb-3 shadow-lg group-hover/upload:scale-110 transition-transform duration-300 border border-white/5">
+                <Plus size={24} className="text-purple-400" />
               </div>
+              <span className="font-semibold text-slate-300 group-hover/upload:text-white transition-colors">Tap or drag files here</span>
+              <span className="text-xs text-slate-500 mt-1">Preserved in Original Native Quality</span>
               <input type="file" multiple ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
             </div>
 
             {files.length > 0 && (
-              <div className="bg-slate-950/50 rounded-2xl p-4 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-slate-300">{files.length} file{files.length > 1 ? 's' : ''} ready</span>
-                  <span className="text-xs text-slate-500">{(files.reduce((a, b) => a + b.size, 0) / 1024 / 1024).toFixed(2)} MB total</span>
+              <div className="bg-slate-950/60 rounded-[1.5rem] p-5 border border-slate-800/80 shadow-inner animate-in fade-in slide-in-from-bottom-4">
+                <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+                  <span className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                    <span className="bg-slate-800 px-2 py-1 rounded text-xs">{files.length}</span> Ready to send
+                  </span>
+                  <span className="text-xs font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded">{(files.reduce((a, b) => a + b.size, 0) / 1024 / 1024).toFixed(2)} MB</span>
                 </div>
 
-                <div className="max-h-[200px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                <div className="max-h-[220px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
                   {files.map(file => (
-                    <div key={file.file_id} className="flex items-center justify-between bg-slate-900 rounded-xl p-3 text-sm border border-white/5">
-                      <span className="truncate pr-4 text-slate-300">{file.name}</span>
-                      <button onClick={(e) => { e.stopPropagation(); removeStagingFile(file.file_id); }} className="text-slate-500 hover:text-red-400 transition-colors shrink-0">
+                    <div key={file.file_id} className="flex items-center justify-between bg-slate-900/80 rounded-xl p-3 text-sm border border-white/5 hover:border-white/10 transition-colors group/item">
+                      <div className="flex items-center gap-3 truncate">
+                        <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center shrink-0"><CheckCircle2 size={14} className="text-slate-500" /></div>
+                        <span className="truncate pr-4 text-slate-300 font-medium">{file.name}</span>
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); removeStagingFile(file.file_id); }} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-red-500/10 hover:text-red-400 transition-colors shrink-0">
                         <X size={16} />
                       </button>
                     </div>
@@ -435,8 +531,8 @@ function App() {
                 <button
                   onClick={requestBatchTransfer}
                   disabled={selectedTargets.length === 0}
-                  className={`w-full py-4 rounded-xl font-bold text-lg mt-2 transition-all shadow-lg flex justify-center items-center gap-2
-                    ${selectedTargets.length > 0 ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
+                  className={`w-full py-4 rounded-xl font-bold text-lg mt-5 transition-all shadow-xl flex justify-center items-center gap-3
+                    ${selectedTargets.length > 0 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/25 hover:shadow-blue-500/40 transform hover:-translate-y-0.5' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
                 >
                   <Share2 size={20} />
                   {selectedTargets.length > 0 ? `Send Batch to ${selectedTargets.length} Device(s)` : 'Select Target Device(s) Above'}
@@ -447,9 +543,12 @@ function App() {
 
           {/* Active Transfers */}
           {(Object.keys(activeBatches).length > 0 || Object.keys(receiveProgress).length > 0 || downloadables.length > 0) && (
-            <div className="bg-slate-900/50 rounded-3xl border border-white/10 p-6">
-              <h3 className="text-lg font-semibold mb-4 text-slate-200">Active Transfers</h3>
-              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="bg-slate-900/40 rounded-[2rem] border border-white/5 p-6 md:p-8 backdrop-blur-2xl shadow-xl animate-in fade-in slide-in-from-bottom-8">
+              <h3 className="text-xl font-bold mb-6 text-slate-200 flex items-center gap-3">
+                <div className="p-2 bg-green-500/10 rounded-lg text-green-400"><ZapIcon size={20} /></div>
+                Live Transfers
+              </h3>
+              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
 
                 {/* Sending Batches */}
                 {Object.entries(activeBatches).map(([batchId, batch]) => {
@@ -458,32 +557,35 @@ function App() {
                   const totalMB = (batch.files.reduce((a, b) => a + b.size, 0) / 1024 / 1024).toFixed(2)
 
                   return (
-                    <div key={batchId} className="bg-slate-800/50 rounded-2xl p-4 border border-white/5 relative overflow-hidden">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0">
-                            <UploadCloud size={20} />
+                    <div key={batchId} className={`bg-slate-950/50 rounded-2xl p-5 border relative overflow-hidden transition-colors ${isDone ? 'border-green-500/20' : 'border-blue-500/20'}`}>
+                      {isDone && <div className="absolute inset-0 bg-green-500/5 animate-in fade-in duration-1000" />}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-3 relative z-10">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${isDone ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                            {isDone ? <CheckCircle2 size={24} /> : <UploadCloud size={24} className="animate-pulse" />}
                           </div>
                           <div className="overflow-hidden">
-                            <p className="font-medium text-sm truncate">Sending to {batch.target_name}</p>
-                            <p className="text-xs text-slate-400">{batch.files.length} files • {totalMB} MB total</p>
+                            <p className="font-bold text-base truncate text-slate-200">Sending to {batch.target_name}</p>
+                            <p className="text-sm text-slate-400 mt-0.5">{batch.files.length} files • {totalMB} MB total</p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 self-start sm:self-auto ml-12 sm:ml-0">
+                        <div className="flex items-center gap-2 self-end sm:self-auto ml-16 sm:ml-0">
                           {isDone ? (
-                            <span className="text-green-400 flex items-center gap-1 text-sm"><CheckCircle2 size={16} /> Completed</span>
+                            <span className="text-green-400 font-bold flex items-center gap-1.5"><CheckCircle2 size={18} /> Success</span>
                           ) : isWaiting ? (
-                            <span className="text-yellow-400 text-xs px-2 py-1 bg-yellow-400/10 rounded-lg">Waiting for Accept...</span>
+                            <span className="text-yellow-400 text-xs font-semibold px-3 py-1.5 bg-yellow-400/10 rounded-lg animate-pulse border border-yellow-400/20">Awaiting Accept...</span>
                           ) : (
-                            <span className="text-blue-400 text-sm font-semibold">{batch.progress}%</span>
+                            <span className="text-blue-400 text-lg font-black">{batch.progress}%</span>
                           )}
                         </div>
                       </div>
 
                       {batch.status === 'uploading' && (
-                        <div className="w-full bg-slate-950 rounded-full h-1.5 mt-3 overflow-hidden">
-                          <div className="bg-blue-500 h-1.5 rounded-full transition-all duration-300" style={{ width: `${batch.progress}%` }} />
+                        <div className="w-full bg-slate-900 rounded-full h-2 mt-4 overflow-hidden shadow-inner relative">
+                          <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-400 rounded-full transition-all duration-300 relative" style={{ width: `${batch.progress}%` }}>
+                            <div className="absolute top-0 bottom-0 right-0 w-20 bg-gradient-to-r from-transparent to-white/40 blur-sm translate-x-1/2" />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -506,26 +608,26 @@ function App() {
                   })
 
                   const avgProgress = Math.floor(totalPercents / filesCount)
-                  // Notice: When backend sends 'batch_complete', we handle that and put into downloadables.
-                  // So we only show here while receiving.
                   return (
-                    <div key={batchId} className="bg-slate-800/50 rounded-2xl p-4 border border-indigo-500/20 relative overflow-hidden">
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between z-10 relative gap-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0 animate-pulse">
-                            <ZapIcon size={20} />
+                    <div key={batchId} className="bg-slate-950/50 rounded-2xl p-5 border border-indigo-500/30 relative overflow-hidden shadow-lg">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between z-10 relative gap-3">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0 border border-indigo-500/20">
+                            <ZapIcon size={24} fill="currentColor" className="animate-pulse opacity-80" />
                           </div>
                           <div>
-                            <p className="font-medium text-sm truncate">↓ Receiving {filesCount} file{filesCount > 1 ? 's' : ''}</p>
-                            <p className="text-xs text-slate-400">From {fileData.sender_name}</p>
+                            <p className="font-bold text-base truncate text-slate-200">↓ Receiving {filesCount} file{filesCount > 1 ? 's' : ''}</p>
+                            <p className="text-sm text-slate-400 mt-0.5">From {fileData.sender_name}</p>
                           </div>
                         </div>
-                        <div className="text-sm font-semibold text-indigo-400 self-start sm:self-auto ml-12 sm:ml-0">
+                        <div className="text-lg font-black text-indigo-400 self-end sm:self-auto ml-16 sm:ml-0 bg-indigo-500/10 px-3 py-1 rounded-lg">
                           {avgProgress}%
                         </div>
                       </div>
-                      <div className="w-full bg-slate-950 rounded-full h-1.5 mt-3 overflow-hidden z-10 relative">
-                        <div className="bg-indigo-500 h-1.5 rounded-full transition-all duration-300" style={{ width: `${avgProgress}%` }} />
+                      <div className="w-full bg-slate-900 rounded-full h-2 mt-4 overflow-hidden z-10 relative shadow-inner">
+                        <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-300 relative" style={{ width: `${avgProgress}%` }}>
+                          <div className="absolute top-0 bottom-0 right-0 w-20 bg-gradient-to-r from-transparent to-white/40 blur-sm translate-x-1/2" />
+                        </div>
                       </div>
                     </div>
                   )
@@ -533,19 +635,20 @@ function App() {
 
                 {/* Downloadables (Finished receiving) */}
                 {downloadables.map((data, i) => (
-                  <div key={`dl-${i}`} className="bg-slate-800/50 rounded-2xl p-4 border border-green-500/20 relative overflow-hidden">
+                  <div key={`dl-${i}`} className="bg-green-950/30 rounded-2xl p-5 border border-green-500/30 relative overflow-hidden shadow-lg animate-in fade-in slide-in-from-top-4">
                     <div className="absolute inset-0 bg-green-500/5 z-0" />
-                    <div className="flex items-center justify-between z-10 relative gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-400 shrink-0">
-                          <CheckCircle2 size={20} />
+                    <div className="flex items-center justify-between z-10 relative gap-3">
+                      <div className="flex items-center gap-4 w-full">
+                        <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center text-green-400 shrink-0 shadow-[0_0_15px_rgba(34,197,94,0.2)]">
+                          <CheckCircle2 size={24} />
                         </div>
                         <div className="overflow-hidden flex-1">
-                          <p className="font-medium text-sm truncate text-green-100">Saved: {data.filename}</p>
-                          <button onClick={() => triggerDownload(data.download_url, data.filename)} className="text-xs text-green-400 hover:text-green-300 underline mt-1 text-left block">
-                            Download Again
-                          </button>
+                          <p className="font-bold text-base truncate text-green-100 flex items-center gap-2">Ready <ZapIcon size={14} fill="currentColor" className="text-yellow-400" /></p>
+                          <p className="text-sm text-green-400/80 truncate">{data.filename}</p>
                         </div>
+                        <button onClick={() => triggerDownload(data.download_url, data.filename)} className="ml-auto px-4 py-2 bg-green-500 hover:bg-green-400 text-slate-950 font-bold rounded-lg text-sm shrink-0 shadow-lg transition-colors">
+                          Save
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -556,34 +659,52 @@ function App() {
           )}
         </div>
 
+        {/* Right Column (Info Sidebar) */}
         <div className="lg:col-span-4 flex flex-col gap-6">
-          <div className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-3xl border border-indigo-500/20 p-6 sticky top-24">
-            <h3 className="text-lg font-semibold text-indigo-300 mb-4 flex items-center gap-2">
-              <Shield size={20} /> App Info
+          <div className="bg-slate-900/40 rounded-[2rem] border border-white/5 p-7 sticky top-28 backdrop-blur-2xl shadow-xl">
+            <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-3">
+              <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400"><Info size={20} /></div>
+              Platform Core
             </h3>
-            <ul className="space-y-4 text-sm text-slate-300">
-              <li className="flex items-start gap-3">
-                <div className="bg-slate-900 p-1.5 rounded-lg text-blue-400 shrink-0"><CheckCircle2 size={16} /></div>
+
+            <div className="space-y-6">
+              <div className="group flex items-start gap-4 p-3 -m-3 hover:bg-slate-800/50 rounded-xl transition-colors">
+                <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 p-2.5 rounded-xl text-blue-400 shrink-0 shadow-inner group-hover:scale-110 transition-transform"><CheckCircle2 size={18} /></div>
                 <div>
-                  <strong className="block text-white">Full Quality Transfer</strong>
-                  Images and videos are sent byte-by-byte with exactly 0% compression.
+                  <strong className="block text-slate-200 mb-1 font-semibold text-sm">Turbo LAN Transfer</strong>
+                  <p className="text-xs text-slate-400 leading-relaxed">Images and massive videos are channeled locally via 10MB ultra-fast bursts.</p>
                 </div>
-              </li>
-              <li className="flex items-start gap-3">
-                <div className="bg-slate-900 p-1.5 rounded-lg text-purple-400 shrink-0"><ZapIcon size={16} /></div>
+              </div>
+
+              <div className="group flex items-start gap-4 p-3 -m-3 hover:bg-slate-800/50 rounded-xl transition-colors">
+                <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/20 p-2.5 rounded-xl text-purple-400 shrink-0 shadow-inner group-hover:scale-110 transition-transform"><ShieldAlert size={18} /></div>
                 <div>
-                  <strong className="block text-white">Batch Sending</strong>
-                  Select multiple files and send them all at once. They will be zipped automatically.
+                  <strong className="block text-slate-200 mb-1 font-semibold text-sm">Zero Trace Security</strong>
+                  <p className="text-xs text-slate-400 leading-relaxed">Files self-destruct from the server explicitly after delivery to conserve absolute storage bounds.</p>
                 </div>
-              </li>
-              <li className="flex items-start gap-3">
-                <div className="bg-slate-900 p-1.5 rounded-lg text-green-400 shrink-0"><Edit2 size={16} /></div>
+              </div>
+
+              <div className="group flex items-start gap-4 p-3 -m-3 hover:bg-slate-800/50 rounded-xl transition-colors">
+                <div className="bg-gradient-to-br from-green-500/20 to-green-600/20 p-2.5 rounded-xl text-green-400 shrink-0 shadow-inner group-hover:scale-110 transition-transform"><UploadCloud size={18} /></div>
                 <div>
-                  <strong className="block text-white">Custom Device Name</strong>
-                  Tap your device name at the top to customize how others see you on the network.
+                  <strong className="block text-slate-200 mb-1 font-semibold text-sm">Smart Drag & Drop</strong>
+                  <p className="text-xs text-slate-400 leading-relaxed">Throw files anywhere onto the screen space at any time to instantly queue them into staging.</p>
                 </div>
-              </li>
-            </ul>
+              </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-white/5">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                <span>LocalShare X Build</span>
+                <span className="bg-slate-800 px-2 py-1 rounded text-slate-400 border border-slate-700">v2.1 Pro</span>
+              </div>
+               <div className="mt-8 pt-6 border-t border-white/5">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                <span>The programmer</span>
+                <span className="bg-slate-800 px-2 py-1 rounded text-slate-400 border border-slate-700">obada</span>
+              </div>
+            </div>
+            </div>
           </div>
         </div>
       </main>
