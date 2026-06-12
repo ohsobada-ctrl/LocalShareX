@@ -3,7 +3,7 @@ import axios from 'axios'
 import { UploadCloud, CheckCircle2, Shield, Share2, ServerCog, Wifi, Smartphone, Monitor, ShieldAlert, ZapIcon, Edit2, X, Plus, Info, AlertTriangle } from 'lucide-react'
 
 const DEFAULT_HOST = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname
-const PORT = 8000
+const PORT = 7070
 const CHUNK_SIZE = 10 * 1024 * 1024 // 10MB
 
 const getClientId = () => {

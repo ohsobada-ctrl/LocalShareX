@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم LocalShare X</title>
+    <!-- Google Fonts: Cairo & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- QRCode.js for generating QR Codes dynamically -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: rgba(17, 24, 39, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --accent-primary: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.4);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.4);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.4);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --glass-blur: blur(16px);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Cairo', 'Outfit', sans-serif;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%),
+                radial-gradient(at 50% 50%, rgba(239, 68, 68, 0.03) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem 1rem;
+            overflow-x: hidden;
+        }
+
+        /* Container */
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (min-width: 900px) {
+            .container {
+                grid-template-columns: 350px 1fr;
+            }
+        }
+
+        /* Glassmorphism Panel */
+        .panel {
+            background: var(--bg-secondary);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .panel:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        /* Header */
+        header {
+            width: 100%;
+            max-width: 1200px;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            background: linear-gradient(135deg, var(--accent-primary), var(--success));
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 800;
+            font-size: 1.5rem;
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .logo-text h1 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff, #9ca3af);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-text p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* System State Indicator */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-dot.active {
+            background-color: var(--success);
+            box-shadow: 0 0 10px var(--success-glow);
+            animation: pulse 1.5s infinite alternate;
+        }
+
+        .status-dot.inactive {
+            background-color: var(--danger);
+            box-shadow: 0 0 10px var(--danger-glow);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            100% { transform: scale(1.1); opacity: 1; }
+        }
+
+        /* Sidebar: Control Panel */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .sidebar-section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #fff;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        /* Status Details Card */
+        .service-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .service-info h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .service-info p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-family: 'Outfit', sans-serif;
+            margin-top: 2px;
+        }
+
+        /* Main Buttons */
+        .btn {
+            width: 100%;
+            padding: 0.9rem 1.5rem;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .btn-start:hover {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+            filter: brightness(1.1);
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .btn-stop:hover {
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+            filter: brightness(1.1);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .btn-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        /* System Info Details */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .info-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+        }
+
+        .info-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+
+        .info-val {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #fff;
+            word-break: break-all;
+        }
+
+        /* QR Code Modal/Section */
+        .qr-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px dashed var(--border-color);
+            border-radius: 12px;
+            margin-top: 0.5rem;
+            text-align: center;
+        }
+
+        .qr-container {
+            padding: 8px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            display: none;
+        }
+
+        /* Console Log Viewer */
+        .console-container {
+            display: flex;
+            flex-direction: column;
+            height: 600px;
+        }
+
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .console-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .console-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .console-tab {
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border: 1px solid var(--border-color);
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .console-tab.active {
+            background: var(--accent-primary);
+            color: white;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+        }
+
+        .console-body {
+            flex: 1;
+            background: #05070c;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1rem;
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+            font-size: 0.85rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+        }
+
+        .log-line {
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-all;
+            border-left: 3px solid transparent;
+            padding-left: 8px;
+            direction: ltr;
+            text-align: left;
+        }
+
+        .log-line.system {
+            color: #60a5fa;
+            border-color: #3b82f6;
+        }
+
+        .log-line.backend {
+            color: #34d399;
+            border-color: #10b981;
+        }
+
+        .log-line.frontend {
+            color: #fca5a5;
+            border-color: #f87171;
+        }
+
+        .log-line.error {
+            color: #f87171;
+            background: rgba(239, 68, 68, 0.1);
+            border-color: #ef4444;
+            font-weight: bold;
+        }
+
+        .log-timestamp {
+            color: #4b5563;
+            margin-right: 6px;
+            font-size: 0.75rem;
+            user-select: none;
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 2rem;
+            background: rgba(17, 24, 39, 0.9);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-color);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transform: translateY(150%);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-section">
+            <div class="logo-icon">X</div>
+            <div class="logo-text">
+                <h1>LocalShare X</h1>
+                <p>لوحة التحكم السريعة بالسيرفر</p>
+            </div>
+        </div>
+        <div class="status-badge">
+            <span id="global-status-dot" class="status-dot inactive"></span>
+            <span id="global-status-text">السيرفر متوقف</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Sidebar Controls -->
+        <div class="sidebar">
+            <!-- Server Status & Control -->
+            <div class="panel">
+                <div class="sidebar-section-title">
+                    <i data-lucide="sliders"></i>
+                    <span>التحكم في السيرفر</span>
+                </div>
+
+                <!-- Services status -->
+                <div style="margin-bottom: 1.5rem;">
+                    <div class="service-card">
+                        <div class="service-info">
+                            <h3>السيرفر الخلفي (FastAPI)</h3>
+                            <p>Port: 7070</p>
+                        </div>
+                        <span id="status-backend" class="status-badge" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">
+                            <span id="dot-backend" class="status-dot inactive" style="width: 8px; height: 8px;"></span>
+                            <span id="text-backend">مغلق</span>
+                        </span>
+                    </div>
+
+                    <div class="service-card">
+                        <div class="service-info">
+                            <h3>الواجهة الأمامية (Vite)</h3>
+                            <p>Port: 5050</p>
+                        </div>
+                        <span id="status-frontend" class="status-badge" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">
+                            <span id="dot-frontend" class="status-dot inactive" style="width: 8px; height: 8px;"></span>
+                            <span id="text-frontend">مغلق</span>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="btn-group">
+                    <button id="btn-start" class="btn btn-start" onclick="startServer()">
+                        <i data-lucide="play"></i>
+                        <span>تشغيل السيرفر</span>
+                    </button>
+                    <button id="btn-stop" class="btn btn-stop" onclick="stopServer()" style="display: none;">
+                        <i data-lucide="square"></i>
+                        <span>إيقاف السيرفر</span>
+                    </button>
+                    <button id="btn-open-app" class="btn btn-secondary" onclick="openApp()" disabled>
+                        <i data-lucide="external-link"></i>
+                        <span>افتح واجهة المشاركة</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Maintenance & Tools -->
+            <div class="panel">
+                <div class="sidebar-section-title">
+                    <i data-lucide="wrench"></i>
+                    <span>أدوات الصيانة والتخزين</span>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="openFolder()">
+                        <i data-lucide="folder-open"></i>
+                        <span>فتح مجلد الملفات المرفوعة</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearStorage()" style="border-color: rgba(239, 68, 68, 0.2); color: #fca5a5;">
+                        <i data-lucide="trash-2"></i>
+                        <span>مسح جميع الملفات المرفوعة</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Connection Details -->
+            <div class="panel">
+                <div class="sidebar-section-title">
+                    <i data-lucide="wifi"></i>
+                    <span>الاتصال والشبكة المحلية</span>
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">عنوان الـ IP المحلي للكمبيوتر</div>
+                        <div id="val-ip" class="info-val">جاري التحميل...</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">رابط المشاركة للهواتف والأجهزة الأخرى</div>
+                        <div id="val-link" class="info-val" style="font-family: 'Outfit'; font-size: 0.85rem;">-</div>
+                    </div>
+                </div>
+                <div class="qr-section">
+                    <div id="qrcode" class="qr-container"></div>
+                    <div id="qr-instruction" style="font-size: 0.75rem; color: var(--text-muted);">
+                        شغّل السيرفر لعرض رمز الـ QR للدخول السريع من الموبايل
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Console Log Area -->
+        <div class="panel console-container">
+            <div class="console-header">
+                <div class="console-title">
+                    <i data-lucide="terminal" style="color: var(--accent-primary);"></i>
+                    <span>سجل العمليات الحية (Terminal Logs)</span>
+                </div>
+                <div class="console-controls">
+                    <button class="console-tab active" id="tab-all" onclick="filterLogs('all')">الكل</button>
+                    <button class="console-tab" id="tab-backend" onclick="filterLogs('backend')">الخلفية</button>
+                    <button class="console-tab" id="tab-frontend" onclick="filterLogs('frontend')">الواجهة</button>
+                    <button class="console-tab" id="tab-system" onclick="filterLogs('system')">النظام</button>
+                    <button class="console-tab" onclick="clearLogConsole()" style="margin-right: 0.5rem; background: transparent; border: none; padding: 0.25rem;">
+                        <i data-lucide="trash-2" style="width: 16px; height: 16px; color: var(--text-muted);"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="console-body" class="console-body">
+                <div class="log-line system">
+                    <span class="log-timestamp">[النظام]</span>لوحة التحكم جاهزة ومستعدة للعمل. اضغط على "تشغيل السيرفر" لتشغيل الخدمات.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast message -->
+    <div id="toast" class="toast">
+        <i id="toast-icon" data-lucide="info"></i>
+        <span id="toast-text">رسالة توضيحية</span>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let currentFilter = 'all';
+        let serverIp = '127.0.0.1';
+        let qrCodeObj = null;
+
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Check status periodically
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                // Update IP Info
+                serverIp = data.localIp;
+                document.getElementById('val-ip').textContent = serverIp;
+                
+                const shareLink = `http://${serverIp}:5050`;
+                document.getElementById('val-link').textContent = shareLink;
+
+                // Update Backend Status
+                const dotBackend = document.getElementById('dot-backend');
+                const textBackend = document.getElementById('text-backend');
+                if (data.backend === 'running') {
+                    dotBackend.className = 'status-dot active';
+                    textBackend.textContent = 'يعمل';
+                } else {
+                    dotBackend.className = 'status-dot inactive';
+                    textBackend.textContent = 'مغلق';
+                }
+
+                // Update Frontend Status
+                const dotFrontend = document.getElementById('dot-frontend');
+                const textFrontend = document.getElementById('text-frontend');
+                if (data.frontend === 'running') {
+                    dotFrontend.className = 'status-dot active';
+                    textFrontend.textContent = 'يعمل';
+                } else {
+                    dotFrontend.className = 'status-dot inactive';
+                    textFrontend.textContent = 'مغلق';
+                }
+
+                // Global Server Status
+                const globalDot = document.getElementById('global-status-dot');
+                const globalText = document.getElementById('global-status-text');
+                const btnStart = document.getElementById('btn-start');
+                const btnStop = document.getElementById('btn-stop');
+                const btnOpenApp = document.getElementById('btn-open-app');
+
+                if (data.backend === 'running' || data.frontend === 'running') {
+                    globalDot.className = 'status-dot active';
+                    globalText.textContent = 'السيرفر نشط';
+                    btnStart.style.display = 'none';
+                    btnStop.style.display = 'flex';
+                    
+                    if (data.frontend === 'running') {
+                        btnOpenApp.disabled = false;
+                        
+                        // Generate QR Code if not already visible
+                        const qrContainer = document.getElementById('qrcode');
+                        qrContainer.style.display = 'block';
+                        document.getElementById('qr-instruction').innerHTML = 'امسح الرمز بكاميرا الموبايل للدخول السريع';
+                        
+                        if (!qrCodeObj) {
+                            qrCodeObj = new QRCode(qrContainer, {
+                                text: shareLink,
+                                width: 140,
+                                height: 140,
+                                colorDark : "#0b0f19",
+                                colorLight : "#ffffff",
+                                correctLevel : QRCode.CorrectLevel.H
+                            });
+                        } else {
+                            qrCodeObj.clear();
+                            qrCodeObj.makeCode(shareLink);
+                        }
+                    }
+                } else {
+                    globalDot.className = 'status-dot inactive';
+                    globalText.textContent = 'السيرفر متوقف';
+                    btnStart.style.display = 'flex';
+                    btnStop.style.display = 'none';
+                    btnOpenApp.disabled = true;
+                    
+                    document.getElementById('qrcode').style.display = 'none';
+                    document.getElementById('qr-instruction').innerHTML = 'شغّل السيرفر لعرض رمز الـ QR للدخول السريع من الموبايل';
+                    qrCodeObj = null;
+                    document.getElementById('qrcode').innerHTML = '';
+                }
+            } catch (err) {
+                console.error("Error fetching status:", err);
+                showToast("فشل الاتصال بسيرفر التحكم الرئيسي", "alert-triangle");
+            }
+        }
+
+        // Connect to Server Sent Events for Live Logs
+        function connectLogStream() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource('/api/logs');
+            
+            eventSource.addEventListener('log', function(event) {
+                const logData = JSON.parse(event.data);
+                appendLog(logData.source, logData.text);
+            });
+
+            eventSource.onerror = function() {
+                console.log("Log stream disconnected. Retrying...");
+                setTimeout(connectLogStream, 3000);
+            };
+        }
+
+        // Append log line to console
+        function appendLog(source, text) {
+            const consoleBody = document.getElementById('console-body');
+            const logLine = document.createElement('div');
+            
+            // Format log class
+            logLine.className = `log-line ${source}`;
+            if (text.toLowerCase().includes('error') || text.toLowerCase().includes('fail') || text.toLowerCase().includes('exception')) {
+                logLine.classList.add('error');
+            }
+
+            // Clean ANSI escape codes from output
+            const cleanedText = text.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+
+            const timestamp = document.createElement('span');
+            timestamp.className = 'log-timestamp';
+            const timeStr = new Date().toLocaleTimeString();
+            
+            let sourceLabel = 'نظام';
+            if (source === 'backend') sourceLabel = 'الخلفية';
+            if (source === 'frontend') sourceLabel = 'الواجهة';
+            
+            timestamp.textContent = `[${timeStr} - ${sourceLabel}] `;
+            
+            logLine.appendChild(timestamp);
+            logLine.appendChild(document.createTextNode(cleanedText));
+
+            // Apply filter class
+            if (currentFilter !== 'all' && currentFilter !== source) {
+                logLine.style.display = 'none';
+            }
+
+            consoleBody.appendChild(logLine);
+
+            // Limit logs displayed in DOM to 1000 lines
+            if (consoleBody.childNodes.length > 1000) {
+                consoleBody.removeChild(consoleBody.firstChild);
+            }
+
+            // Auto-scroll to bottom
+            consoleBody.scrollTop = consoleBody.scrollHeight;
+        }
+
+        // Filter log view
+        function filterLogs(filter) {
+            currentFilter = filter;
+            
+            // Update tabs active state
+            document.querySelectorAll('.console-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(`tab-${filter}`).classList.add('active');
+
+            // Show/hide lines
+            const consoleBody = document.getElementById('console-body');
+            const lines = consoleBody.getElementsByClassName('log-line');
+            for (let line of lines) {
+                if (filter === 'all') {
+                    line.style.display = 'block';
+                } else {
+                    if (line.classList.contains(filter)) {
+                        line.style.display = 'block';
+                    } else {
+                        line.style.display = 'none';
+                    }
+                }
+            }
+        }
+
+        // Clear console logs visually
+        function clearLogConsole() {
+            const consoleBody = document.getElementById('console-body');
+            consoleBody.innerHTML = '';
+            appendLog('system', 'تم مسح الشاشة الحالية.');
+        }
+
+        // Show toast notification
+        function showToast(message, iconName = 'info') {
+            const toast = document.getElementById('toast');
+            const toastText = document.getElementById('toast-text');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastText.textContent = message;
+            toastIcon.setAttribute('data-lucide', iconName);
+            lucide.createIcons();
+
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Start Server Trigger
+        async function startServer() {
+            try {
+                showToast("جاري بدء تشغيل السيرفرات...", "loader");
+                appendLog('system', 'بدء تشغيل الخدمات...');
+                const response = await fetch('/api/start', { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    showToast("تم إرسال أمر البدء بنجاح!", "check");
+                } else {
+                    showToast("حدث خطأ أثناء البدء: " + result.error, "alert-circle");
+                }
+            } catch (err) {
+                showToast("فشل إرسال أمر التشغيل", "alert-circle");
+            }
+        }
+
+        // Stop Server Trigger
+        async function stopServer() {
+            try {
+                showToast("جاري إيقاف السيرفرات...", "loader");
+                appendLog('system', 'إيقاف تشغيل الخدمات وتنظيف المنافذ...');
+                const response = await fetch('/api/stop', { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    showToast("تم إيقاف السيرفر بنجاح!", "check");
+                } else {
+                    showToast("حدث خطأ أثناء الإيقاف: " + result.error, "alert-circle");
+                }
+            } catch (err) {
+                showToast("فشل إرسال أمر الإيقاف", "alert-circle");
+            }
+        }
+
+        // Open App in default browser
+        function openApp() {
+            const shareLink = `http://${serverIp}:5050`;
+            window.open(shareLink, '_blank');
+        }
+
+        // Open Uploads Folder in Explorer
+        async function openFolder() {
+            try {
+                const response = await fetch('/api/open-folder', { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    showToast("تم فتح المجلد في الكمبيوتر", "folder-open");
+                } else {
+                    showToast("تعذر فتح المجلد: " + result.error, "alert-circle");
+                }
+            } catch (err) {
+                showToast("فشل فتح المجلد", "alert-circle");
+            }
+        }
+
+        // Clear Upload storage
+        async function clearStorage() {
+            if (!confirm("هل أنت متأكد من رغبتك في حذف جميع الملفات والمجلدات المؤقتة المرفوعة نهائياً؟")) {
+                return;
+            }
+            try {
+                showToast("جاري حذف الملفات المرفوعة...", "trash-2");
+                const response = await fetch('/api/clear-storage', { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    showToast("تم حذف جميع الملفات بنجاح!", "check");
+                    appendLog('system', 'تم تنظيف مجلدات التخزين والمؤقتات بالكامل.');
+                } else {
+                    showToast("حدث خطأ أثناء الحذف: " + result.error, "alert-circle");
+                }
+            } catch (err) {
+                showToast("فشل إرسال أمر الحذف", "alert-circle");
+            }
+        }
+
+        // Initialize connection and status loop
+        checkStatus();
+        connectLogStream();
+        setInterval(checkStatus, 2000);
+    </script>
+</body>
+</html>

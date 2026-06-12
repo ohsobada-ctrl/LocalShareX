@@ -22,7 +22,7 @@ src/index.css: Tailwind definitions and custom variables for the dark aesthetic 
 powershell
 cd backend
 .\venv\Scripts\activate
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 7070
 2. Start Frontend
 
 powershell
