@@ -1,0 +1,35 @@
+LocalShare X
+A high-performance LAN file transfer web application.
+
+🚀 Features Built
+Backend: Built with FastAPI. Handles concurrent chunked file uploads and realtime WebSocket progress tracking.
+Frontend: Built with React, Vite, and Tailwind CSS (v4). Modern UI, dark mode, responsive layout.
+Transfers: Drag & drop support. Chunked uploads (1MB sizes) processed concurrently in batches to avoid overwhelming the browser or network.
+Real-time: Tracks network progress live and updates smoothly by chunk size.
+📁 Structure
+Your project is structured locally under c:/Users/obada/OneDrive/سطح المكتب/LocalShareX as follows:
+
+backend/: FastAPI Backend
+main.py: Contains API endpoints, Chunk-merge logic and WebSocket manager
+uploads/: Completed files go here (created on runtime)
+temp_uploads/: Pending chunk-uploads
+frontend/: React UI
+src/App.jsx: Main interface featuring Drag and Drop, Progress tracking, device pairing.
+src/index.css: Tailwind definitions and custom variables for the dark aesthetic UI.
+💻 How to Run
+1. Start Backend
+
+powershell
+cd backend
+.\venv\Scripts\activate
+uvicorn main:app --host 0.0.0.0 --port 8000
+2. Start Frontend
+
+powershell
+cd frontend
+npm run dev -- --host 0.0.0.0
+📱 Use on any device
+Let the Frontend console run, it will expose your Local Network IP (e.g., 192.168.1.1XX).
+Open http://192.168.1.XX:5173 (http://192.168.1.xx:5173/) on iPhones, Androids, or any other laptop within the same WiFi.
+Once opened, if you are not using localhost, type the IP of the host machine in the toolbar to establish connection.
+Now you can drag and drop media to share across the LAN!
